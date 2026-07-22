@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest
+httpx
+pytest-docker
+boto3
+requests
