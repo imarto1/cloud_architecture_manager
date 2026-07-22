@@ -1,0 +1,3 @@
+.idea/
+tests/__pycache__/
+parsing_service/tests/mock/aws/volume/
