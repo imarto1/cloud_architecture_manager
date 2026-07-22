@@ -11,6 +11,9 @@ services:
       - DEBUG=1
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
-      - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
+      - localstack-data:/var/lib/localstack
       - "/var/run/docker.sock:/var/run/docker.sock"
       - "./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh" # Init script
+
+volumes:
+  localstack-data:
