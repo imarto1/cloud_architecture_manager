@@ -6,7 +6,13 @@ from requests.exceptions import ConnectionError
 
 @pytest.fixture(scope="session")
 def docker_compose_file(pytestconfig):
-    return os.path.join(str(pytestconfig.rootdir), "tests", "mock", "aws", "docker-compose.yml")
+    return os.path.join(str(pytestconfig.rootdir), "mock", "aws", "docker-compose.yml")
+
+
+@pytest.fixture(scope="session")
+def docker_compose_command():
+    """Start all independent mock clouds concurrently."""
+    return "docker compose --parallel 10"
 
 def is_responsive(url):
     try:
@@ -15,7 +21,7 @@ def is_responsive(url):
             health = response.json()
             # Ensure required services are in 'running' or 'available' state
             services = health.get("services", {})
-            required_services = ["s3", "ec2", "dynamodb", "iam"]
+            required_services = ["s3", "ec2", "dynamodb", "iam", "sqs"]
             for svc in required_services:
                 status = services.get(svc)
                 if status not in ["running", "available"]:
@@ -30,14 +36,14 @@ def localstack_service(docker_ip, docker_services):
     if not os.path.exists("/var/run/docker.sock") and os.name != 'nt':
         pytest.skip("Docker not available")
     
-    url = "http://localhost:4566/_localstack/health"
+    urls = [f"http://localhost:{port}/_localstack/health" for port in range(4566, 4576)]
     try:
         docker_services.wait_until_responsive(
-            timeout=30.0, pause=0.5, check=lambda: is_responsive(url)
+            timeout=60.0, pause=0.5, check=lambda: all(is_responsive(url) for url in urls)
         )
     except Exception as e:
         pytest.skip(f"LocalStack failed to start: {e}")
-    return url
+    return urls
 
 @pytest.fixture(scope="session", autouse=True)
 def parsing_service_tests_setup(localstack_service):
