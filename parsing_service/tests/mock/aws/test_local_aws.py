@@ -1,73 +1,109 @@
 import boto3
-import pytest
-import os
+import json
 import time
+from pathlib import Path
 
-# The key is to provide the endpoint_url pointing to LocalStack (default: 4566)
-ENDPOINT_URL = "http://localhost:4566"
+import pytest
+import requests
+
+
 AWS_ACCESS_KEY_ID = "testing"
 AWS_SECRET_ACCESS_KEY = "testing"
 AWS_DEFAULT_REGION = "us-east-1"
+ARCHITECTURES_FILE = Path(__file__).parents[3] / "mock" / "aws" / "architectures.json"
 
-def test_localstack_read(localstack_service):
-    # S3 example
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=ENDPOINT_URL,
+
+def aws_client(service, endpoint):
+    return boto3.client(
+        service,
+        endpoint_url=endpoint,
         region_name=AWS_DEFAULT_REGION,
         aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
     )
-    
-    # Wait for bucket to be created by init script
-    max_retries = 10
-    for i in range(max_retries):
-        buckets = s3.list_buckets()
-        bucket_names = [b['Name'] for b in buckets['Buckets']]
-        if "test-bucket" in bucket_names:
-            break
-        time.sleep(1)
-    
-    assert "test-bucket" in bucket_names, "test-bucket was not created by init script"
-    print("S3 Buckets:", bucket_names)
-    
-    # EC2 example
-    ec2 = boto3.client(
-        "ec2",
-        endpoint_url=ENDPOINT_URL,
-        region_name=AWS_DEFAULT_REGION,
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY
-    )
-    # Wait for instance
-    for i in range(max_retries):
-        instances = ec2.describe_instances()
-        if len(instances['Reservations']) > 0:
-            break
-        time.sleep(1)
-    assert len(instances['Reservations']) > 0
-    print("EC2 Instances:", instances['Reservations'])
 
-    # DynamoDB example
-    ddb = boto3.client(
-        "dynamodb",
-        endpoint_url=ENDPOINT_URL,
-        region_name=AWS_DEFAULT_REGION,
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY
-    )
-    # Wait for table
-    for i in range(max_retries):
-        tables = ddb.list_tables()
-        if "TestTable" in tables['TableNames']:
-            break
-        time.sleep(1)
-    assert "TestTable" in tables['TableNames']
-    print("DynamoDB Tables:", tables['TableNames'])
 
-if __name__ == "__main__":
-    try:
-        test_localstack_read()
-    except Exception as e:
-        print(f"Error connecting to LocalStack: {e}")
-        print("Make sure LocalStack is running (docker-compose up -d)")
+def wait_for_scenario(architecture, timeout=30):
+    """Wait for one isolated LocalStack cloud to finish its ready-hook."""
+    resources = architecture["resources"]
+    expected_buckets = set(resources.get("s3_buckets", []))
+    expected_tables = set(resources.get("dynamodb_tables", []))
+    expected_instances = set(resources.get("ec2_instances", []))
+    expected_queues = set(resources.get("sqs_queues", []))
+    endpoint = architecture["endpoint"]
+    s3, dynamodb, sqs, ec2 = (
+        aws_client(service, endpoint) for service in ("s3", "dynamodb", "sqs", "ec2")
+    )
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        s3_buckets = {bucket["Name"] for bucket in s3.list_buckets()["Buckets"]}
+        dynamodb_tables = set(dynamodb.list_tables()["TableNames"])
+        instance_architectures = {
+            tag["Value"]
+            for reservation in ec2.describe_instances()["Reservations"]
+            for instance in reservation["Instances"]
+            for tag in instance.get("Tags", [])
+            if tag["Key"] == "ArchitectureId"
+        }
+        queue_names = {
+            queue_url.rsplit("/", 1)[-1]
+            for queue_url in sqs.list_queues().get("QueueUrls", [])
+        }
+        if (
+            expected_buckets <= s3_buckets
+            and expected_tables <= dynamodb_tables
+            and expected_instances <= instance_architectures
+            and expected_queues <= queue_names
+        ):
+            return s3_buckets, dynamodb_tables, instance_architectures, queue_names
+        time.sleep(0.5)
+
+    pytest.fail(f"LocalStack did not finish seeding the {architecture['id']} cloud")
+
+
+def test_all_mock_clouds_are_up(localstack_service):
+    """Every isolated cloud is reachable and exposes the required AWS services."""
+    required_services = {"s3", "ec2", "dynamodb", "iam", "sqs"}
+
+    assert len(localstack_service) == 10
+    for health_url in localstack_service:
+        response = requests.get(health_url, timeout=5)
+        assert response.status_code == 200
+        services = response.json()["services"]
+        assert {
+            service for service in required_services
+            if services.get(service) in {"running", "available"}
+        } == required_services
+
+
+def test_architecture_scenarios_are_isolated_clouds(localstack_service):
+    """Each use case has its own endpoint and contains only its declared resources."""
+    architectures = json.loads(ARCHITECTURES_FILE.read_text())["architectures"]
+    expected_use_cases = {
+        "web_application", "public_api", "ecommerce", "real_time_analytics",
+        "batch_processing", "event_processing", "media_delivery", "internal_tool",
+        "iot_ingestion", "ml_inference",
+    }
+
+    assert len(architectures) == 10
+    assert {architecture["use_case"] for architecture in architectures} == expected_use_cases
+    assert len({architecture["endpoint"] for architecture in architectures}) == 10
+
+    for architecture in architectures:
+        buckets, tables, instances, queues = wait_for_scenario(architecture)
+        resources = architecture["resources"]
+        assert buckets == set(resources.get("s3_buckets", []))
+        assert tables == set(resources.get("dynamodb_tables", []))
+        assert instances == set(resources.get("ec2_instances", []))
+        assert queues == set(resources.get("sqs_queues", []))
+
+
+def test_web_application_cloud_is_accessible(localstack_service):
+    architectures = json.loads(ARCHITECTURES_FILE.read_text())["architectures"]
+    web_application = next(item for item in architectures if item["id"] == "web-application")
+    buckets, tables, instances, _ = wait_for_scenario(web_application)
+
+    assert buckets == {"web-application-assets"}
+    assert tables == {"WebApplicationSessions"}
+    assert instances == {"web-application"}
