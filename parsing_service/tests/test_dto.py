@@ -1,4 +1,4 @@
-from server.DTOs.CloudArchitecture import CloudArchitectureDTO, AWSResourceDTO, AWSTagDTO, ResourceRelationshipDTO
+from parsing_service.DTOs.CloudArchitecture import CloudArchitectureDTO, AWSResourceDTO, AWSTagDTO, ResourceRelationshipDTO
 
 def test_dto_serialization():
     # Create a sample architecture
@@ -8,7 +8,7 @@ def test_dto_serialization():
         resources=[
             AWSResourceDTO(
                 id="arn:aws:ec2:us-east-1:123456789012:instance/i-0abcdef1234567890",
-                name="web-server-01",
+                name="web-parsing_service-01",
                 type="aws_instance",
                 region="us-east-1",
                 account_id="123456789012",

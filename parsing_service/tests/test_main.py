@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from server.main import app
+from parsing_service.main import app
 
 client = TestClient(app)
 
