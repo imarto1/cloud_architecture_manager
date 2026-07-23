@@ -3,3 +3,4 @@
 *.egg-info/
 **/__pycache__/
 aws_parser_mocks/aws_parser_mocks/assets/volume/
+server/architectures.sqlite
