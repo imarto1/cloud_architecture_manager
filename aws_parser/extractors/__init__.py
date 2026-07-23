@@ -1,0 +1,1 @@
+"""Cloud-environment discovery adapters."""

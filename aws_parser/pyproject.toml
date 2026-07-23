@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aws-parser"
+version = "0.1.0"
+description = "Discover AWS-compatible cloud architectures."
+requires-python = ">=3.10"
+dependencies = [
+    "boto3",
+    "pydantic",
+    "requests",
+]
+
+[project.optional-dependencies]
+mocks = [
+    "aws-parser-mocks==0.1.0",
+]
+test = [
+    "pytest",
+]
+
+[project.scripts]
+aws-parser = "aws_parser.cli:main"
+
+[tool.setuptools]
+packages = ["aws_parser", "aws_parser.DTOs", "aws_parser.extractors"]
+
+[tool.setuptools.package-dir]
+aws_parser = "."
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

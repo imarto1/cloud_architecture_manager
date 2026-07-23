@@ -1,3 +1,5 @@
 .idea/
-tests/__pycache__/
-parsing_service/mock/aws/volume/
+**/dist/
+*.egg-info/
+**/__pycache__/
+aws_parser_mocks/aws_parser_mocks/assets/volume/
