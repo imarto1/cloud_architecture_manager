@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
+from requests import RequestException
 
 from server.architecture_service import ArchitectureService, DATABASE_PATH
 from server.init_db import seed_database
@@ -51,6 +53,7 @@ class ArchitectureResponse(BaseModel):
 
 architecture_service = ArchitectureService()
 app = FastAPI(title="Cloud Architecture Manager API")
+logger = logging.getLogger(__name__)
 
 
 class ParseArchitectureRequest(BaseModel):
@@ -80,7 +83,14 @@ def get_architectures() -> list[ArchitectureResponse]:
 def parse_architecture(request: ParseArchitectureRequest) -> ArchitectureResponse:
     """Parse an AWS-compatible endpoint and save the resulting architecture."""
     ensure_database()
-    architecture = parse(request.endpoint, request.region, request.services)
+    try:
+        architecture = parse(request.endpoint, request.region, request.services)
+    except RequestException as error:
+        logger.warning("Could not reach architecture endpoint %s: %s", request.endpoint, error)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not reach the architecture endpoint.",
+        ) from error
     document = architecture.model_dump(mode="json")
     record = architecture_service.create(
         ArchitectureRecord(
