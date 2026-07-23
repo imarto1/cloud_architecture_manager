@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aws-parser-mocks"
+version = "0.1.0"
+description = "Optional LocalStack mocks for aws-parser."
+requires-python = ">=3.10"
+dependencies = [
+    "aws-parser==0.1.0",
+    "docker"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-docker",
+]
+
+[tool.setuptools]
+packages = ["aws_parser_mocks"]
+
+[tool.setuptools.package-data]
+aws_parser_mocks = [
+    "assets/architectures.json",
+    "assets/docker-compose.yml",
+    "assets/init-aws.sh",
+    "assets/deploy.sh",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
