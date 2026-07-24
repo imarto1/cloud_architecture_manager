@@ -95,6 +95,7 @@ h1 {
 
 .results h2 {
   font-size: clamp(1.75rem, 3vw, 2.5rem);
+  transform: translateY(-0.5rem);
 }
 
 .recommendation-panel {
@@ -154,9 +155,14 @@ button:disabled {
 
 .result-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 2rem;
   border-radius: 0.75rem;
   background: #172944;
+  text-align: center;
   animation: podium-card-enter 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
@@ -177,7 +183,7 @@ button:disabled {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: end;
   gap: 1.5rem;
-  margin: 3rem 0 0;
+  margin: 4.75rem 0 0;
 }
 
 .result-card--overall {
@@ -320,12 +326,6 @@ button:disabled {
   color: #69d2e7 !important;
   font-weight: 700;
   text-transform: capitalize;
-}
-
-code {
-  display: block;
-  overflow-wrap: anywhere;
-  color: #9eb7df;
 }
 
 .error {

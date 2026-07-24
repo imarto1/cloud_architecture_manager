@@ -21,7 +21,6 @@ type Preferences = { [Field in FieldName]: (typeof options)[Field][number] };
 type Recommendation = {
   architecture_id: string;
   name: string;
-  endpoint: string | null;
   match_score: number;
   recommendation_type: string;
   reason: string;
@@ -162,7 +161,6 @@ function App() {
                 <p className="match-score">
                   {Math.round(recommendation.match_score * 100)}% match
                 </p>
-                {recommendation.endpoint && <code>{recommendation.endpoint}</code>}
               </article>
             ))}
           </div>
