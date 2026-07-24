@@ -54,6 +54,24 @@ class ArchitectureResponse(BaseModel):
 
 
 architecture_service = ArchitectureService()
+class ArchitectureDetailResponse(ArchitectureResponse):
+    architecture: dict[str, Any] | None = None
+    profile_metadata: dict[str, Any] | None = None
+
+    @classmethod
+    def from_record(
+        cls,
+        record: ArchitectureRecord,
+        include_profile_metadata: bool,
+        include_architecture_data: bool,
+    ) -> "ArchitectureDetailResponse":
+        response = ArchitectureResponse.from_record(record).model_dump()
+        if not include_profile_metadata:
+            response["profile_metadata"] = None
+        if not include_architecture_data:
+            response["architecture"] = None
+        return cls.model_validate(response)
+
 app = FastAPI(title="Cloud Architecture Manager API")
 logger = logging.getLogger(__name__)
 
@@ -79,6 +97,27 @@ def get_architectures() -> list[ArchitectureResponse]:
 
 @app.post(
     "/architectures/parse",
+@app.get(
+    "/architectures/{architecture_id}",
+    response_model=ArchitectureDetailResponse,
+    response_model_exclude_none=True,
+)
+def get_architecture(
+    architecture_id: str,
+    include_profile_metadata: bool = False,
+    include_architecture_data: bool = False,
+) -> ArchitectureDetailResponse:
+    """Return one saved architecture, with optional JSON and profile metadata."""
+    ensure_database()
+    record = architecture_service.get(architecture_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Architecture not found.")
+    return ArchitectureDetailResponse.from_record(
+        record,
+        include_profile_metadata,
+        include_architecture_data,
+    )
+
     response_model=ArchitectureResponse,
     status_code=status.HTTP_201_CREATED,
 )

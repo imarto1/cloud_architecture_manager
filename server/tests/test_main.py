@@ -54,6 +54,41 @@ def test_get_architectures_returns_saved_records(client) -> None:
     assert body["inserted_at"]
 
 
+def test_get_architecture_excludes_optional_data_by_default(client) -> None:
+    test_client, service = client
+    service.create(make_record())
+
+    response = test_client.get("/architectures/architecture-1")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "architecture-1"
+    assert "profile_metadata" not in response.json()
+    assert "architecture" not in response.json()
+
+
+def test_get_architecture_can_include_optional_data(client) -> None:
+    test_client, service = client
+    service.create(make_record())
+
+    response = test_client.get(
+        "/architectures/architecture-1"
+        "?include_profile_metadata=true&include_architecture_data=true"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["profile_metadata"] == {}
+    assert response.json()["architecture"] == {"name": "Test architecture", "resources": []}
+
+
+def test_get_architecture_returns_404_for_an_unknown_id(client) -> None:
+    test_client, _ = client
+
+    response = test_client.get("/architectures/unknown")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Architecture not found."}
+
+
 def test_parse_architecture_saves_discovered_mock_architecture(client, mock_clouds) -> None:
     test_client, service = client
 
