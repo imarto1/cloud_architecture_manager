@@ -1,6 +1,7 @@
 import boto3
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -83,9 +84,13 @@ def test_scanner_extracts_resources_without_inferring_purpose(localstack_service
     """The parser observes each cloud from its endpoint, not fixture metadata or names."""
     architectures = json.loads(ARCHITECTURES_FILE.read_text())["architectures"]
 
-    for architecture in architectures:
-        discovered = LocalStackArchitectureExtractor(architecture["endpoint"]).extract()
+    def scan(architecture):
+        return architecture, LocalStackArchitectureExtractor(architecture["endpoint"]).extract()
 
+    with ThreadPoolExecutor(max_workers=len(architectures)) as executor:
+        scanned_architectures = list(executor.map(scan, architectures))
+
+    for architecture, discovered in scanned_architectures:
         assert discovered.metadata["endpoint"] == architecture["endpoint"]
         assert "purpose" not in discovered.metadata
         assert discovered.resources
@@ -112,8 +117,10 @@ def test_architecture_scenarios_are_isolated_clouds(localstack_service):
     assert {architecture["use_case"] for architecture in architectures} == expected_use_cases
     assert len({architecture["endpoint"] for architecture in architectures}) == 10
 
-    for architecture in architectures:
-        buckets, tables, instances, queues = wait_for_scenario(architecture)
+    with ThreadPoolExecutor(max_workers=len(architectures)) as executor:
+        discovered_resources = list(executor.map(wait_for_scenario, architectures))
+
+    for architecture, (buckets, tables, instances, queues) in zip(architectures, discovered_resources):
         resources = architecture["resources"]
         assert buckets == set(resources.get("s3_buckets", []))
         assert tables == set(resources.get("dynamodb_tables", []))

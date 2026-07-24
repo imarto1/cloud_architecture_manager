@@ -16,7 +16,7 @@ if str(MOCK_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(MOCK_PACKAGE_ROOT))
 
 import server.main as api
-from aws_parser_mocks.testing import running_mock_clouds
+from aws_parser_mocks.testing import find_free_port_range, running_mock_clouds
 from server.architecture_service import ArchitectureService
 
 
@@ -34,13 +34,20 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Te
 
 
 @pytest.fixture(scope="session")
-def mock_clouds() -> Iterator[None]:
+def mock_clouds() -> Iterator[dict[str, str]]:
     """Deploy the bundled mock clouds once and tear them down after the test session."""
     if shutil.which("docker") is None:
         pytest.skip("Docker is required for server integration tests")
 
-    try:
-        with running_mock_clouds("server-api-tests"):
-            yield
-    except subprocess.CalledProcessError as error:
-        pytest.skip(f"Could not start LocalStack mock clouds: {error}")
+    docker_info = subprocess.run(
+        ["docker", "info"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if docker_info.returncode != 0:
+        pytest.skip("Docker is not available")
+
+    port_base = find_free_port_range(10)
+    with running_mock_clouds("server-api-tests", port_base) as endpoints:
+        yield endpoints

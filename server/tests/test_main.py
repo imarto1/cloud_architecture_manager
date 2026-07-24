@@ -56,12 +56,12 @@ def test_parse_architecture_saves_discovered_mock_architecture(client, mock_clou
 
     response = test_client.post(
         "/architectures/parse",
-        json={"endpoint": "http://localhost:4566", "services": ["s3"]},
+        json={"endpoint": mock_clouds["web_application"], "services": ["s3"]},
     )
 
     assert response.status_code == 201
     body = response.json()
-    assert body["architecture"]["metadata"]["endpoint"] == "http://localhost:4566"
+    assert body["architecture"]["metadata"]["endpoint"] == mock_clouds["web_application"]
     assert body["inserted_at"]
     assert len(service.list()) == 1
 
