@@ -1,9 +1,10 @@
-import pytest
 import os
-import requests
-import time
 from pathlib import Path
+
+import pytest
+import requests
 from requests.exceptions import ConnectionError
+
 
 @pytest.fixture(scope="session")
 def docker_compose_file(pytestconfig):
