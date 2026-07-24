@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from aws_parser.DTOs.architecture import Resource
+from aws_parser.DTOs.architecture import Resource, Tag
 
 
 class ResourceDiscoverer(Protocol):
@@ -45,6 +45,7 @@ class Ec2Discoverer:
                         type="aws_ec2_instance",
                         region=region,
                         account_id="unknown",
+                        tags=[Tag(key=key, value=value) for key, value in tags.items()],
                         metadata={
                             "state": instance["State"]["Name"],
                             "instance_type": instance["InstanceType"],

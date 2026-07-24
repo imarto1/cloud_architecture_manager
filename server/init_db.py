@@ -11,7 +11,6 @@ import json
 import sys
 import uuid
 from pathlib import Path
-from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -30,12 +29,14 @@ def seed_database(database_path: Path = DATABASE_PATH) -> int:
     records = []
     for architecture in architectures:
         document = architecture.model_dump(mode="json")
+        profile = calculate_profile(document)
         records.append(
             ArchitectureRecord(
                 id=str(uuid.uuid4()),
                 name=document["name"],
                 architecture_json=json.dumps(document),
-                **calculate_profile(document),
+                profile_metadata=json.dumps(profile.metadata),
+                **profile.values,
             )
         )
     ArchitectureService(database_path).replace_all(records)

@@ -39,6 +39,7 @@ class ArchitectureRecord(Base):
         default=lambda: datetime.now(UTC), nullable=False
     )
     architecture_json: Mapped[str] = mapped_column(Text, nullable=False)
+    profile_metadata: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     scale: Mapped[str] = mapped_column(String, nullable=False)
     traffic_pattern: Mapped[str] = mapped_column(String, nullable=False)
     latency_sensitivity_score: Mapped[float] = mapped_column(nullable=False)

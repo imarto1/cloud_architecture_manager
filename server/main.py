@@ -12,11 +12,11 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 from requests import RequestException
 
+from aws_parser import parse
 from server.architecture_service import ArchitectureService, DATABASE_PATH
 from server.init_db import seed_database
 from server.models import ArchitectureRecord
 from server.profiling import calculate_profile
-from aws_parser import parse
 
 
 class ArchitectureResponse(BaseModel):
@@ -24,6 +24,7 @@ class ArchitectureResponse(BaseModel):
     name: str
     inserted_at: datetime
     architecture: dict[str, Any]
+    profile_metadata: dict[str, Any]
     scale: str
     traffic_pattern: str
     latency_sensitivity_score: float
@@ -40,6 +41,7 @@ class ArchitectureResponse(BaseModel):
             name=record.name,
             inserted_at=record.inserted_at,
             architecture=json.loads(record.architecture_json),
+            profile_metadata=json.loads(record.profile_metadata),
             scale=record.scale,
             traffic_pattern=record.traffic_pattern,
             latency_sensitivity_score=record.latency_sensitivity_score,
@@ -92,12 +94,14 @@ def parse_architecture(request: ParseArchitectureRequest) -> ArchitectureRespons
             detail="Could not reach the architecture endpoint.",
         ) from error
     document = architecture.model_dump(mode="json")
+    profile = calculate_profile(document)
     record = architecture_service.create(
         ArchitectureRecord(
             id=str(uuid.uuid4()),
             name=document["name"],
             architecture_json=json.dumps(document),
-            **calculate_profile(document),
+            profile_metadata=json.dumps(profile.metadata),
+            **profile.values,
         )
     )
     return ArchitectureResponse.from_record(record)
