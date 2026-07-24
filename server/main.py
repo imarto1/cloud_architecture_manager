@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
@@ -17,6 +17,7 @@ from server.architecture_service import ArchitectureService, DATABASE_PATH
 from server.init_db import seed_database
 from server.models import ArchitectureRecord
 from server.profiling import calculate_profile
+from server.recommendations import ArchitectureRecommender, RecommendationCriteria, UseCase
 
 
 class ArchitectureResponse(BaseModel):
@@ -53,7 +54,6 @@ class ArchitectureResponse(BaseModel):
         )
 
 
-architecture_service = ArchitectureService()
 class ArchitectureDetailResponse(ArchitectureResponse):
     architecture: dict[str, Any] | None = None
     profile_metadata: dict[str, Any] | None = None
@@ -72,9 +72,6 @@ class ArchitectureDetailResponse(ArchitectureResponse):
             response["architecture"] = None
         return cls.model_validate(response)
 
-app = FastAPI(title="Cloud Architecture Manager API")
-logger = logging.getLogger(__name__)
-
 
 class ParseArchitectureRequest(BaseModel):
     endpoint: str
@@ -82,10 +79,36 @@ class ParseArchitectureRequest(BaseModel):
     services: set[str] | None = None
 
 
+class ArchitectureRecommendationRequest(BaseModel):
+    use_case: UseCase
+    scale: Literal["small", "medium", "large"]
+    traffic_pattern: Literal["steady", "bursty", "spiky", "scheduled", "unpredictable"]
+    latency_sensitivity: Literal["low", "medium", "high"]
+    processing_style: Literal["request_response", "event_driven", "batch", "streaming"]
+    data_intensity: Literal["low", "medium", "high"]
+    availability_requirement: Literal["standard", "high", "critical"]
+    ops_preference: Literal["managed_services", "balanced", "self_managed_ok"]
+    budget_sensitivity: Literal["low", "medium", "high"]
+
+
+class ArchitectureRecommendationResponse(BaseModel):
+    architecture_id: str
+    name: str
+    endpoint: str | None
+    match_score: float
+    recommendation_type: str
+    reason: str
+
+
 def ensure_database() -> None:
     """Seed the local database on first use when its file is absent."""
     if not DATABASE_PATH.exists():
         seed_database()
+
+
+architecture_service = ArchitectureService()
+app = FastAPI(title="Cloud Architecture Manager API")
+logger = logging.getLogger(__name__)
 
 
 @app.get("/architectures", response_model=list[ArchitectureResponse])
@@ -96,7 +119,29 @@ def get_architectures() -> list[ArchitectureResponse]:
 
 
 @app.post(
-    "/architectures/parse",
+    "/architectures/recommendations",
+    response_model=list[ArchitectureRecommendationResponse],
+)
+def recommend_architectures(
+    request: ArchitectureRecommendationRequest,
+) -> list[ArchitectureRecommendationResponse]:
+    """Return up to three saved architectures ranked for the requested profile."""
+    ensure_database()
+    criteria = RecommendationCriteria(**request.model_dump())
+    recommendations = ArchitectureRecommender().recommend(architecture_service.list(), criteria)
+    return [
+        ArchitectureRecommendationResponse(
+            architecture_id=recommendation.record.id,
+            name=recommendation.record.name,
+            endpoint=recommendation.endpoint,
+            match_score=round(recommendation.overall_score, 3),
+            recommendation_type=recommendation_type,
+            reason=reason,
+        )
+        for recommendation, recommendation_type, reason in recommendations
+    ]
+
+
 @app.get(
     "/architectures/{architecture_id}",
     response_model=ArchitectureDetailResponse,
@@ -118,6 +163,9 @@ def get_architecture(
         include_architecture_data,
     )
 
+
+@app.post(
+    "/architectures/parse",
     response_model=ArchitectureResponse,
     status_code=status.HTTP_201_CREATED,
 )

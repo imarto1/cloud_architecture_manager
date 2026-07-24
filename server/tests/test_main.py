@@ -89,6 +89,68 @@ def test_get_architecture_returns_404_for_an_unknown_id(client) -> None:
     assert response.json() == {"detail": "Architecture not found."}
 
 
+def test_recommend_architectures_returns_distinct_ranked_results(client) -> None:
+    test_client, service = client
+    best_match = make_record()
+    best_match.architecture_json = json.dumps(
+        {"name": "Ecommerce", "metadata": {"endpoint": "http://best"}}
+    )
+    service.create(best_match)
+    service.create(
+        ArchitectureRecord(
+            id="architecture-2",
+            name="Managed alternative",
+            architecture_json=json.dumps({"name": "Ecommerce", "metadata": {"endpoint": "http://ops"}}),
+            scale="medium",
+            traffic_pattern="bursty",
+            latency_sensitivity_score=0.8,
+            processing_style="request_response",
+            data_intensity_score=0.5,
+            availability_requirement="high",
+            ops_preference="managed_services",
+            budget_sensitivity_score=0.2,
+        )
+    )
+    service.create(
+        ArchitectureRecord(
+            id="architecture-3",
+            name="Budget alternative",
+            architecture_json=json.dumps({"name": "Ecommerce", "metadata": {"endpoint": "http://budget"}}),
+            scale="large",
+            traffic_pattern="spiky",
+            latency_sensitivity_score=0.2,
+            processing_style="batch",
+            data_intensity_score=0.2,
+            availability_requirement="standard",
+            ops_preference="self_managed_ok",
+            budget_sensitivity_score=0.8,
+        )
+    )
+
+    response = test_client.post(
+        "/architectures/recommendations",
+        json={
+            "use_case": "ecommerce",
+            "scale": "small",
+            "traffic_pattern": "steady",
+            "latency_sensitivity": "low",
+            "processing_style": "batch",
+            "data_intensity": "low",
+            "availability_requirement": "standard",
+            "ops_preference": "balanced",
+            "budget_sensitivity": "medium",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["architecture_id"] == "architecture-1"
+    assert [item["recommendation_type"] for item in response.json()] == [
+        "best_overall_match",
+        "operations_alignment",
+        "budget_alignment",
+    ]
+
+
 def test_parse_architecture_saves_discovered_mock_architecture(client, mock_clouds) -> None:
     test_client, service = client
 
