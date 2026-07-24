@@ -85,12 +85,15 @@ def test_scanner_extracts_resources_without_inferring_purpose(localstack_service
     architectures = json.loads(ARCHITECTURES_FILE.read_text())["architectures"]
 
     def scan(architecture):
-        return architecture, LocalStackArchitectureExtractor(architecture["endpoint"]).extract()
+        return architecture, LocalStackArchitectureExtractor(
+            architecture["endpoint"], architecture["id"]
+        ).extract()
 
     with ThreadPoolExecutor(max_workers=len(architectures)) as executor:
         scanned_architectures = list(executor.map(scan, architectures))
 
     for architecture, discovered in scanned_architectures:
+        assert discovered.name == architecture["id"]
         assert discovered.metadata["endpoint"] == architecture["endpoint"]
         assert "purpose" not in discovered.metadata
         assert discovered.resources
@@ -98,7 +101,9 @@ def test_scanner_extracts_resources_without_inferring_purpose(localstack_service
 
 def test_scanner_warns_for_unsupported_requested_service(localstack_service):
     endpoint = "http://localhost:4566"
-    discovered = LocalStackArchitectureExtractor(endpoint, services={"invalid-service"}).extract()
+    discovered = LocalStackArchitectureExtractor(
+        endpoint, "unsupported-service-test", services={"invalid-service"}
+    ).extract()
 
     assert discovered.resources == []
     assert discovered.metadata["warnings"] == ["Unsupported service: invalid-service"]

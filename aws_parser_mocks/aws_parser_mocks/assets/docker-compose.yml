@@ -1,5 +1,3 @@
-version: "3.8"
-
 x-localstack: &localstack
   image: localstack/localstack:3.0.0
   environment: &localstack-environment

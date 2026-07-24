@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import NoReturn
 
+import pytest
 from requests import ConnectionError
 
 import server.main as api
@@ -29,6 +30,34 @@ def make_record() -> ArchitectureRecord:
 
 def raise_connection_error(*_args: object) -> NoReturn:
     raise ConnectionError("connection refused")
+
+
+def test_ensure_database_seeds_then_tears_down(tmp_path, monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(api, "DATABASE_PATH", tmp_path / "missing.sqlite")
+    monkeypatch.setattr(api, "seed_database", lambda: calls.append("seed"))
+    monkeypatch.setattr(api, "teardown_mocks", lambda: calls.append("teardown"))
+
+    api.ensure_database()
+
+    assert calls == ["seed", "teardown"]
+
+
+def test_ensure_database_tears_down_when_seeding_fails(tmp_path, monkeypatch) -> None:
+    calls = []
+
+    def fail_to_seed() -> None:
+        calls.append("seed")
+        raise RuntimeError("seed failed")
+
+    monkeypatch.setattr(api, "DATABASE_PATH", tmp_path / "missing.sqlite")
+    monkeypatch.setattr(api, "seed_database", fail_to_seed)
+    monkeypatch.setattr(api, "teardown_mocks", lambda: calls.append("teardown"))
+
+    with pytest.raises(RuntimeError, match="seed failed"):
+        api.ensure_database()
+
+    assert calls == ["seed", "teardown"]
 
 
 def test_get_architectures_returns_saved_records(client) -> None:
@@ -156,11 +185,17 @@ def test_parse_architecture_saves_discovered_mock_architecture(client, mock_clou
 
     response = test_client.post(
         "/architectures/parse",
-        json={"endpoint": mock_clouds["web_application"], "services": ["s3"]},
+        json={
+            "endpoint": mock_clouds["web_application"],
+            "name": "Customer portal",
+            "services": ["s3"],
+        },
     )
 
     assert response.status_code == 201
     body = response.json()
+    assert body["name"] == "Customer portal"
+    assert body["architecture"]["name"] == "Customer portal"
     assert body["architecture"]["metadata"]["endpoint"] == mock_clouds["web_application"]
     assert body["inserted_at"]
     assert body["profile_metadata"]["scoring_version"] == "1"
@@ -175,7 +210,10 @@ def test_parse_architecture_returns_502_when_endpoint_is_unreachable(client, mon
         raise_connection_error,
     )
 
-    response = test_client.post("/architectures/parse", json={"endpoint": "http://unreachable"})
+    response = test_client.post(
+        "/architectures/parse",
+        json={"endpoint": "http://unreachable", "name": "Unreachable architecture"},
+    )
 
     assert response.status_code == 502
     assert response.json() == {"detail": "Could not reach the architecture endpoint."}

@@ -40,7 +40,7 @@ def parse_containers(
     """Return each discovered container's top-level architecture model."""
     architectures = {}
     for container_name, endpoint in sorted(container_endpoints.items()):
-        architectures[container_name] = parse(endpoint, region, services)
+        architectures[container_name] = parse(endpoint, container_name, region, services)
     return architectures
 
 

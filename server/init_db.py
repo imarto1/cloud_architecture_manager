@@ -13,10 +13,12 @@ import uuid
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+MOCK_PACKAGE_ROOT = PROJECT_ROOT / "aws_parser_mocks"
+for source_root in (PROJECT_ROOT, MOCK_PACKAGE_ROOT):
+    if str(source_root) not in sys.path:
+        sys.path.insert(0, str(source_root))
 
-from aws_parser import parse_mocks
+from aws_parser import parse_mocks, teardown_mocks
 from server.architecture_service import ArchitectureService, DATABASE_PATH
 from server.models import ArchitectureRecord
 from server.profiling import calculate_profile
@@ -44,5 +46,8 @@ def seed_database(database_path: Path = DATABASE_PATH) -> int:
 
 
 if __name__ == "__main__":
-    count = seed_database()
+    try:
+        count = seed_database()
+    finally:
+        teardown_mocks()
     print(f"Seeded {count} architecture record(s) in {DATABASE_PATH}")

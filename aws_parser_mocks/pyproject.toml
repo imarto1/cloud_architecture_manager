@@ -8,8 +8,7 @@ version = "0.1.0"
 description = "Optional LocalStack mocks for aws-parser."
 requires-python = ">=3.10"
 dependencies = [
-    "aws-parser==0.1.0",
-    "docker"
+    "aws-parser==0.1.0"
 ]
 
 [project.optional-dependencies]

@@ -4,15 +4,24 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MOCK_PACKAGE_ROOT = PROJECT_ROOT / "aws_parser_mocks"
+for source_root in (PROJECT_ROOT, MOCK_PACKAGE_ROOT):
+    if str(source_root) not in sys.path:
+        sys.path.insert(0, str(source_root))
 
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 from requests import RequestException
 
-from aws_parser import parse
+from aws_parser import parse, teardown_mocks
 from server.architecture_service import ArchitectureService, DATABASE_PATH
 from server.init_db import seed_database
 from server.models import ArchitectureRecord
@@ -75,6 +84,7 @@ class ArchitectureDetailResponse(ArchitectureResponse):
 
 class ParseArchitectureRequest(BaseModel):
     endpoint: str
+    name: str
     region: str = "us-east-1"
     services: set[str] | None = None
 
@@ -101,20 +111,22 @@ class ArchitectureRecommendationResponse(BaseModel):
 
 
 def ensure_database() -> None:
-    """Seed the local database on first use when its file is absent."""
+    """Seed a missing local database during application initialization."""
     if not DATABASE_PATH.exists():
-        seed_database()
+        try:
+            seed_database()
+        finally:
+            teardown_mocks()
 
 
 architecture_service = ArchitectureService()
 app = FastAPI(title="Cloud Architecture Manager API")
 logger = logging.getLogger(__name__)
-
+ensure_database()
 
 @app.get("/architectures", response_model=list[ArchitectureResponse])
 def get_architectures() -> list[ArchitectureResponse]:
     """Return every architecture stored in the local database."""
-    ensure_database()
     return [ArchitectureResponse.from_record(record) for record in architecture_service.list()]
 
 
@@ -126,7 +138,6 @@ def recommend_architectures(
     request: ArchitectureRecommendationRequest,
 ) -> list[ArchitectureRecommendationResponse]:
     """Return up to three saved architectures ranked for the requested profile."""
-    ensure_database()
     criteria = RecommendationCriteria(**request.model_dump())
     recommendations = ArchitectureRecommender().recommend(architecture_service.list(), criteria)
     return [
@@ -153,7 +164,6 @@ def get_architecture(
     include_architecture_data: bool = False,
 ) -> ArchitectureDetailResponse:
     """Return one saved architecture, with optional JSON and profile metadata."""
-    ensure_database()
     record = architecture_service.get(architecture_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Architecture not found.")
@@ -171,9 +181,8 @@ def get_architecture(
 )
 def parse_architecture(request: ParseArchitectureRequest) -> ArchitectureResponse:
     """Parse an AWS-compatible endpoint and save the resulting architecture."""
-    ensure_database()
     try:
-        architecture = parse(request.endpoint, request.region, request.services)
+        architecture = parse(request.endpoint, request.name, request.region, request.services)
     except RequestException as error:
         logger.warning("Could not reach architecture endpoint %s: %s", request.endpoint, error)
         raise HTTPException(
@@ -192,3 +201,13 @@ def parse_architecture(request: ParseArchitectureRequest) -> ArchitectureRespons
         )
     )
     return ArchitectureResponse.from_record(record)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host=os.getenv("SERVER_HOST", "127.0.0.1"),
+        port=int(os.getenv("SERVER_PORT", "8000")),
+    )

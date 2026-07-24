@@ -7,11 +7,12 @@ from .extractors.localstack import LocalStackArchitectureExtractor
 
 def parse(
     endpoint: str,
+    name: str,
     region: str = "us-east-1",
     services: set[str] | None = None,
 ) -> Architecture:
     """Discover observed AWS-compatible resources at an endpoint."""
-    return LocalStackArchitectureExtractor(endpoint, region, services).extract()
+    return LocalStackArchitectureExtractor(endpoint, name, region, services).extract()
 
 
 def parse_mocks(*args, **kwargs):
@@ -23,9 +24,19 @@ def parse_mocks(*args, **kwargs):
     return optional_parse_mocks(*args, **kwargs)
 
 
+def teardown_mocks(*args, **kwargs):
+    """Remove bundled mock containers and volumes."""
+    try:
+        from aws_parser_mocks import teardown_mocks as optional_teardown_mocks
+    except ImportError as error:
+        raise RuntimeError("Install optional mock support with 'pip install aws_parser[mocks]'.") from error
+    return optional_teardown_mocks(*args, **kwargs)
+
+
 __all__ = [
     "parse",
     "parse_mocks",
+    "teardown_mocks",
     "DTOs",
     "Architecture",
     "Relationship",

@@ -18,11 +18,13 @@ class LocalStackArchitectureExtractor:
     def __init__(
         self,
         endpoint: str,
+        name: str,
         region: str = "us-east-1",
         services: set[str] | None = None,
         discoverers: dict[str, ResourceDiscoverer] | None = None,
     ):
         self.endpoint = endpoint.rstrip("/")
+        self.name = name
         self.region = region
         self.requested_services = services
         self.discoverers = discoverers or DEFAULT_DISCOVERERS
@@ -51,7 +53,7 @@ class LocalStackArchitectureExtractor:
                 errors[service] = str(error)
 
         return Architecture(
-            name=f"LocalStack {self.endpoint}",
+            name=self.name,
             description="Observed resources; no workload purpose has been inferred.",
             resources=resources,
             metadata={
