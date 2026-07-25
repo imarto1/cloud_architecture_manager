@@ -1,0 +1,14 @@
+.git
+.idea
+.agents
+.codex
+.pytest_cache
+.venv
+__pycache__
+*.py[cod]
+*.sqlite
+frontend
+aws_parser/.pytest_cache
+aws_parser_mocks/.pytest_cache
+aws_parser_mocks/tests
+server/tests
