@@ -1,0 +1,18 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: cloud-architecture-manager-server:latest
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    image: cloud-architecture-manager-frontend:latest
+    depends_on:
+      - server
+    ports:
+      - "5173:80"
