@@ -11,6 +11,9 @@ type ArchitectureGalleryProps = {
   error: string | null;
 };
 
+const AUTO_SCROLL_PIXELS_PER_SECOND = 18;
+const WHEEL_SCROLL_FACTOR = 0.6;
+
 const galleryEnter = keyframes`
   from {
     opacity: 0;
@@ -96,13 +99,11 @@ const ArchitectureCard = styled.article`
   background: #111f35;
   transition:
     border-color 250ms ease,
-    transform 250ms ease,
     box-shadow 250ms ease;
 
   &:hover {
     border-color: #3b6680;
     box-shadow: 0 1rem 2rem rgb(0 0 0 / 18%);
-    transform: translateY(-0.2rem);
   }
 
   h3 {
@@ -196,11 +197,11 @@ export function ArchitectureGallery({
   error,
 }: ArchitectureGalleryProps) {
   const galleryWindow = useRef<HTMLDivElement>(null);
-  const isPaused = useRef(false);
 
   useEffect(() => {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const scroller = galleryWindow.current;
+    let scrollPosition = scroller?.scrollLeft ?? 0;
     let animationFrame = 0;
     let previousTime: number | null = null;
 
@@ -213,15 +214,22 @@ export function ArchitectureGallery({
         Math.abs(event.deltaX) > Math.abs(event.deltaY)
           ? event.deltaX
           : event.deltaY;
+      let pixelDistance = distance;
+      if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+        pixelDistance *= 16;
+      } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+        pixelDistance *= scroller.clientWidth;
+      }
+      const scrollDistance = pixelDistance * WHEEL_SCROLL_FACTOR;
 
-      if (distance === 0) {
+      if (scrollDistance === 0) {
         return;
       }
 
       event.preventDefault();
 
       if (reducedMotion.matches) {
-        scroller.scrollLeft += distance;
+        scroller.scrollLeft += scrollDistance;
         return;
       }
 
@@ -229,25 +237,26 @@ export function ArchitectureGallery({
       if (loopWidth === 0) {
         return;
       }
-      const nextPosition = scroller.scrollLeft + distance;
-      scroller.scrollLeft =
-        ((nextPosition % loopWidth) + loopWidth) % loopWidth;
+      scrollPosition =
+        (((scrollPosition + scrollDistance) % loopWidth) + loopWidth)
+        % loopWidth;
+      scroller.scrollLeft = scrollPosition;
     }
 
     function animate(timestamp: number) {
       if (
         scroller
         && previousTime !== null
-        && !isPaused.current
         && !reducedMotion.matches
       ) {
         const elapsedSeconds = (timestamp - previousTime) / 1000;
         const loopWidth = scroller.scrollWidth / 2;
-        scroller.scrollLeft += elapsedSeconds * 24;
+        scrollPosition += elapsedSeconds * AUTO_SCROLL_PIXELS_PER_SECOND;
 
-        if (scroller.scrollLeft >= loopWidth) {
-          scroller.scrollLeft -= loopWidth;
+        if (scrollPosition >= loopWidth) {
+          scrollPosition -= loopWidth;
         }
+        scroller.scrollLeft = scrollPosition;
       }
 
       previousTime = timestamp;
@@ -288,15 +297,7 @@ export function ArchitectureGallery({
       )}
 
       {architectures.length > 0 && (
-        <GalleryWindow
-          ref={galleryWindow}
-          onMouseEnter={() => {
-            isPaused.current = true;
-          }}
-          onMouseLeave={() => {
-            isPaused.current = false;
-          }}
-        >
+        <GalleryWindow ref={galleryWindow}>
           <GalleryTrack>
             <ArchitectureCards architectures={architectures} duplicate={false} />
             <ArchitectureCards architectures={architectures} duplicate />
