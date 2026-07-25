@@ -38,4 +38,4 @@ COPY server ./server
 
 EXPOSE 8000
 
-CMD ["python", "server/main.py"]
+CMD ["python", "-m", "server.docker_entrypoint"]
