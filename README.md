@@ -184,8 +184,6 @@ Built distributions are written to `aws_parser/dist`.
   workload purpose. Profile scoring and recommendations belong to the server.
 - Unsupported or unreachable services can produce warnings and partial
   architecture data, so callers should inspect the discovery metadata.
-- Custom endpoints must expose the AWS-compatible APIs needed by the requested
-  services.
 
 ## AWS parser mocks
 
@@ -201,7 +199,7 @@ internal tools, IoT ingestion, and ML inference.
 
 ```text
 docker compose --parallel 10 \
-  --file aws_parser_mocks/aws_parser_mocks/assets/docker-compose.yml \
+  --file aws_parser_mocks/src/aws_parser_mocks/assets/docker-compose.yml \
   --project-name aws-parser-mocks \
   up --detach --wait
 ```
@@ -209,7 +207,7 @@ docker compose --parallel 10 \
 PowerShell accepts the same command on one line:
 
 ```powershell
-docker compose --parallel 10 --file aws_parser_mocks/aws_parser_mocks/assets/docker-compose.yml --project-name aws-parser-mocks up --detach --wait
+docker compose --parallel 10 --file aws_parser_mocks/src/aws_parser_mocks/assets/docker-compose.yml --project-name aws-parser-mocks up --detach --wait
 ```
 
 The Python helper deploys and parses the mocks:
@@ -229,7 +227,7 @@ Remove the mock containers, networks, orphaned resources, and named volumes:
 
 ```text
 docker compose \
-  --file aws_parser_mocks/aws_parser_mocks/assets/docker-compose.yml \
+  --file aws_parser_mocks/src/aws_parser_mocks/assets/docker-compose.yml \
   --project-name aws-parser-mocks \
   down --volumes --remove-orphans
 ```
@@ -423,3 +421,38 @@ docker compose up --build
   preferences.
 - This is currently a one-screen client without authentication, routing, or
   browser-side persistence.
+
+## What I would add next
+
+### Frontend
+
+- Add a detailed architecture view, potentially including an interactive
+  resource graph similar to OpenShift's topology view.
+- Display dynamic explanations showing how each architecture matches the
+  requested criteria once the recommendation API exposes profile evidence and
+  individual match contributions.
+- Allow users to describe their requirements in free-form text, then infer and
+  validate the recommendation fields before asking the user to confirm them.
+
+### Server
+
+- Include service configuration and resource relationships as scoring signals,
+  rather than relying primarily on resource types and names.
+- Return a per-criterion score breakdown and the relevant profile evidence with
+  each recommendation.
+- Incorporate profile confidence into recommendation scoring after the
+  confidence values have been calibrated. Confidence is currently stored only
+  as explanatory metadata.
+- Select alternative recommendations dynamically according to their strongest
+  benefits, rather than always returning operations- and budget-focused
+  alternatives.
+- Suggest configuration changes that could make an architecture a better match
+  for the requested workload.
+
+### Parser
+
+- Derive a suggested architecture name from discovered resources and metadata
+  when the caller does not provide one, while still allowing an explicit name
+  to override it.
+- Collect more service-level configuration, such as replica counts,
+  Multi-AZ settings, capacity modes, and scaling policies.
