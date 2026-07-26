@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import { getArchitectures, recommendArchitectures } from "./api";
 import { ArchitectureGallery } from "./components/ArchitectureGallery";
 import { Hero } from "./components/Hero";
 import { RecommendationForm } from "./components/RecommendationForm";
@@ -31,13 +32,7 @@ function App() {
 
     async function loadArchitectures() {
       try {
-        const response = await fetch("/architectures", {
-          signal: request.signal,
-        });
-        if (!response.ok) {
-          throw new Error("The architecture gallery is unavailable right now.");
-        }
-        setArchitectures(await response.json() as SavedArchitecture[]);
+        setArchitectures(await getArchitectures(request.signal));
       } catch (requestError) {
         if (!request.signal.aborted) {
           setGalleryError(
@@ -53,7 +48,7 @@ function App() {
       }
     }
 
-    loadArchitectures();
+    void loadArchitectures();
     return () => request.abort();
   }, []);
 
@@ -63,15 +58,7 @@ function App() {
     setError(null);
 
     try {
-      const response = await fetch("/architectures/recommendations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(preferences),
-      });
-      if (!response.ok) {
-        throw new Error("We could not find recommendations right now.");
-      }
-      setRecommendations(await response.json() as Recommendation[]);
+      setRecommendations(await recommendArchitectures(preferences));
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -101,6 +88,10 @@ function App() {
 
   const hasRecommendations = recommendations.length > 0;
 
+  function handlePreferenceSubmit(event: FormEvent<HTMLFormElement>) {
+    void submitPreferences(event);
+  }
+
   return (
     <>
       <GlobalStyle />
@@ -126,7 +117,7 @@ function App() {
             isLoading={isLoading}
             error={error}
             onChange={updatePreference}
-            onSubmit={submitPreferences}
+            onSubmit={handlePreferenceSubmit}
           />
         )}
 

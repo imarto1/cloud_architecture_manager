@@ -26,15 +26,15 @@ export type Preferences = {
   [Field in FieldName]: (typeof options)[Field][number];
 };
 
-export type Recommendation = {
+export interface Recommendation {
   architecture_id: string;
   name: string;
   match_score: number;
   recommendation_type: string;
   reason: string;
-};
+}
 
-export type SavedArchitecture = {
+export interface SavedArchitecture {
   id: string;
   name: string;
   scale: string;
@@ -42,7 +42,7 @@ export type SavedArchitecture = {
   processing_style: string;
   availability_requirement: string;
   ops_preference: string;
-};
+}
 
 export const initialPreferences: Preferences = {
   use_case: "web_application",

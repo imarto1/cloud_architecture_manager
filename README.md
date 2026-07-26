@@ -81,12 +81,11 @@ than mounting a host Docker socket into the public API container.
 - Node.js 24 or newer
 
 Create and activate a Python virtual environment, then install the local
-packages and server dependencies:
+packages and development dependencies:
 
 ```text
 python -m venv .venv
-python -m pip install --editable ./aws_parser --editable ./aws_parser_mocks
-python -m pip install --requirement server/requirements.txt
+python -m pip install --requirement requirements-dev.txt
 ```
 
 Install the frontend dependencies:
@@ -100,7 +99,7 @@ cd ..
 Start the API from the repository root:
 
 ```text
-python server/main.py
+python -m server.main
 ```
 
 In another terminal, start the frontend:
@@ -281,18 +280,17 @@ Important endpoints include:
 ### Install and run locally
 
 Create and activate a virtual environment, then install the local packages and
-server dependencies:
+server development dependencies:
 
 ```text
 python -m venv .venv
-python -m pip install --editable ./aws_parser --editable ./aws_parser_mocks
-python -m pip install --requirement server/requirements.txt
+python -m pip install --requirement requirements-dev.txt
 ```
 
 Run the server:
 
 ```text
-python server/main.py
+python -m server.main
 ```
 
 The default address is `http://127.0.0.1:8000`. Override it with the
@@ -301,7 +299,7 @@ The default address is `http://127.0.0.1:8000`. Override it with the
 Seed the database without starting the API:
 
 ```text
-python server/init_db.py
+python -m server.init_db
 ```
 
 This command also tears down the mock containers and volumes after seeding.
@@ -327,6 +325,7 @@ and exposes port 8000.
 
 ```text
 python -m pytest server/tests
+python -m ruff check .
 ```
 
 The integration test starts isolated LocalStack containers when Docker is
@@ -335,8 +334,8 @@ available and removes them after the test session.
 ### Considerations
 
 - Container database initialization is handled by the image entrypoint before
-  FastAPI starts. Local execution retains the same eager fallback in
-  `server/main.py`.
+  FastAPI starts. Local execution uses the same initialization through
+  FastAPI's lifespan hook.
 - A first-time seed therefore requires a reachable Docker daemon. The server
   image includes Docker tooling, but daemon access must be enabled deliberately
   because it grants broad host control.
@@ -350,6 +349,8 @@ available and removes them after the test session.
 - Profile scores use explainable heuristics with separately configured
   weights. Recommendations include an overall match and alternatives focused
   on operational and budget fit.
+- Set `ARCHITECTURES_DATABASE_PATH` to move the SQLite database outside the
+  default `server` directory.
 
 ## Frontend
 
@@ -375,6 +376,7 @@ Vite prints the local development URL, normally `http://localhost:5173`.
 
 ```text
 cd frontend
+npm run lint
 npm run build
 ```
 

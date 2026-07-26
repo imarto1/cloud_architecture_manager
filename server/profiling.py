@@ -6,7 +6,6 @@ from typing import Any
 
 from server.scoring import ProfileResult, ResourceWeightedScoringPolicy
 
-
 DEFAULT_SCORING_POLICY = ResourceWeightedScoringPolicy()
 
 

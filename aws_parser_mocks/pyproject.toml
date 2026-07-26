@@ -17,8 +17,8 @@ test = [
     "pytest-docker",
 ]
 
-[tool.setuptools]
-packages = ["aws_parser_mocks"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.package-data]
 aws_parser_mocks = [

@@ -19,7 +19,7 @@ def start() -> None:
 
     os.execv(
         sys.executable,
-        [sys.executable, "server/main.py"],
+        [sys.executable, "-m", "server.main"],
     )
 
 

@@ -4,27 +4,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Literal
 
 from server.models import ArchitectureRecord
+from server.profile_types import (
+    AvailabilityRequirement,
+    Level,
+    OpsPreference,
+    ProcessingStyle,
+    Scale,
+    TrafficPattern,
+    UseCase,
+)
 
-
-UseCase = Literal[
-    "web_application",
-    "public_api",
-    "ecommerce",
-    "real_time_analytics",
-    "batch_processing",
-    "event_processing",
-    "media_delivery",
-    "internal_tool",
-    "iot_ingestion",
-    "ml_inference",
-]
-Level = Literal["low", "medium", "high"]
-
-
-LEVEL_SCORES = {"low": 0.2, "medium": 0.5, "high": 0.8}
+LEVEL_SCORES: dict[Level, float] = {"low": 0.2, "medium": 0.5, "high": 0.8}
 USE_CASES: tuple[UseCase, ...] = (
     "web_application",
     "public_api",
@@ -42,13 +34,13 @@ USE_CASES: tuple[UseCase, ...] = (
 @dataclass(frozen=True)
 class RecommendationCriteria:
     use_case: UseCase
-    scale: Literal["small", "medium", "large"]
-    traffic_pattern: Literal["steady", "bursty", "spiky", "scheduled", "unpredictable"]
+    scale: Scale
+    traffic_pattern: TrafficPattern
     latency_sensitivity: Level
-    processing_style: Literal["request_response", "event_driven", "batch", "streaming"]
+    processing_style: ProcessingStyle
     data_intensity: Level
-    availability_requirement: Literal["standard", "high", "critical"]
-    ops_preference: Literal["managed_services", "balanced", "self_managed_ok"]
+    availability_requirement: AvailabilityRequirement
+    ops_preference: OpsPreference
     budget_sensitivity: Level
 
 
@@ -62,7 +54,7 @@ class RankedArchitecture:
 
 
 class ArchitectureRecommender:
-    """Rank stored architectures against a requested workload profile."""
+    """Rank and select architectures for a requested workload profile."""
 
     def recommend(
         self,
@@ -120,9 +112,18 @@ class ArchitectureRecommender:
             float(record.ops_preference == criteria.ops_preference),
         )
         numeric_scores = (
-            self._numeric_match(record.latency_sensitivity_score, criteria.latency_sensitivity),
-            self._numeric_match(record.data_intensity_score, criteria.data_intensity),
-            self._numeric_match(record.budget_sensitivity_score, criteria.budget_sensitivity),
+            self._numeric_match(
+                record.latency_sensitivity_score,
+                criteria.latency_sensitivity,
+            ),
+            self._numeric_match(
+                record.data_intensity_score,
+                criteria.data_intensity,
+            ),
+            self._numeric_match(
+                record.budget_sensitivity_score,
+                criteria.budget_sensitivity,
+            ),
         )
         overall_score = (2 * use_case_score + sum(categorical_scores) + sum(numeric_scores)) / 10
         document = json.loads(record.architecture_json)
@@ -132,7 +133,10 @@ class ArchitectureRecommender:
             endpoint=endpoint,
             overall_score=overall_score,
             operations_score=float(record.ops_preference == criteria.ops_preference),
-            budget_score=self._numeric_match(record.budget_sensitivity_score, criteria.budget_sensitivity),
+            budget_score=self._numeric_match(
+                record.budget_sensitivity_score,
+                criteria.budget_sensitivity,
+            ),
         )
 
     @staticmethod

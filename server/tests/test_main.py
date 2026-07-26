@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import NoReturn
+from unittest.mock import Mock
 
 import pytest
 from requests import ConnectionError
@@ -33,31 +34,30 @@ def raise_connection_error(*_args: object) -> NoReturn:
 
 
 def test_ensure_database_seeds_then_tears_down(tmp_path, monkeypatch) -> None:
-    calls = []
+    seed_database = Mock()
+    teardown_mocks = Mock()
     monkeypatch.setattr(api, "DATABASE_PATH", tmp_path / "missing.sqlite")
-    monkeypatch.setattr(api, "seed_database", lambda: calls.append("seed"))
-    monkeypatch.setattr(api, "teardown_mocks", lambda: calls.append("teardown"))
+    monkeypatch.setattr(api, "seed_database", seed_database)
+    monkeypatch.setattr(api, "teardown_mocks", teardown_mocks)
 
     api.ensure_database()
 
-    assert calls == ["seed", "teardown"]
+    seed_database.assert_called_once_with()
+    teardown_mocks.assert_called_once_with()
 
 
 def test_ensure_database_tears_down_when_seeding_fails(tmp_path, monkeypatch) -> None:
-    calls = []
-
-    def fail_to_seed() -> None:
-        calls.append("seed")
-        raise RuntimeError("seed failed")
-
+    seed_database = Mock(side_effect=RuntimeError("seed failed"))
+    teardown_mocks = Mock()
     monkeypatch.setattr(api, "DATABASE_PATH", tmp_path / "missing.sqlite")
-    monkeypatch.setattr(api, "seed_database", fail_to_seed)
-    monkeypatch.setattr(api, "teardown_mocks", lambda: calls.append("teardown"))
+    monkeypatch.setattr(api, "seed_database", seed_database)
+    monkeypatch.setattr(api, "teardown_mocks", teardown_mocks)
 
     with pytest.raises(RuntimeError, match="seed failed"):
         api.ensure_database()
 
-    assert calls == ["seed", "teardown"]
+    seed_database.assert_called_once_with()
+    teardown_mocks.assert_called_once_with()
 
 
 def test_get_architectures_returns_saved_records(client) -> None:
@@ -100,8 +100,7 @@ def test_get_architecture_can_include_optional_data(client) -> None:
     service.create(make_record())
 
     response = test_client.get(
-        "/architectures/architecture-1"
-        "?include_profile_metadata=true&include_architecture_data=true"
+        "/architectures/architecture-1?include_profile_metadata=true&include_architecture_data=true"
     )
 
     assert response.status_code == 200
@@ -129,7 +128,9 @@ def test_recommend_architectures_returns_distinct_ranked_results(client) -> None
         ArchitectureRecord(
             id="architecture-2",
             name="Managed alternative",
-            architecture_json=json.dumps({"name": "Ecommerce", "metadata": {"endpoint": "http://ops"}}),
+            architecture_json=json.dumps(
+                {"name": "Ecommerce", "metadata": {"endpoint": "http://ops"}}
+            ),
             scale="medium",
             traffic_pattern="bursty",
             latency_sensitivity_score=0.8,
@@ -144,7 +145,9 @@ def test_recommend_architectures_returns_distinct_ranked_results(client) -> None
         ArchitectureRecord(
             id="architecture-3",
             name="Budget alternative",
-            architecture_json=json.dumps({"name": "Ecommerce", "metadata": {"endpoint": "http://budget"}}),
+            architecture_json=json.dumps(
+                {"name": "Ecommerce", "metadata": {"endpoint": "http://budget"}}
+            ),
             scale="large",
             traffic_pattern="spiky",
             latency_sensitivity_score=0.2,

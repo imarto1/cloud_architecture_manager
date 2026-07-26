@@ -2,11 +2,11 @@ import { styled } from "styled-components";
 
 import { ActionButton, Eyebrow } from "../ui";
 
-type HeroProps = {
+interface HeroProps {
   hidden: boolean;
   showForm: boolean;
   onStart: () => void;
-};
+}
 
 const HeroSection = styled.section<{ $hidden: boolean }>`
   max-width: 42rem;

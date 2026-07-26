@@ -2,127 +2,55 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import sys
-import uuid
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Literal
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MOCK_PACKAGE_ROOT = PROJECT_ROOT / "aws_parser_mocks"
-for source_root in (PROJECT_ROOT, MOCK_PACKAGE_ROOT):
-    if str(source_root) not in sys.path:
-        sys.path.insert(0, str(source_root))
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel
 from requests import RequestException
 
 from aws_parser import parse, teardown_mocks
-from server.architecture_service import ArchitectureService, DATABASE_PATH
+from server.api_models import (
+    ArchitectureDetailResponse,
+    ArchitectureRecommendationRequest,
+    ArchitectureRecommendationResponse,
+    ArchitectureResponse,
+    ParseArchitectureRequest,
+)
+from server.architecture_service import DATABASE_PATH, ArchitectureService
 from server.init_db import seed_database
-from server.models import ArchitectureRecord
-from server.profiling import calculate_profile
-from server.recommendations import ArchitectureRecommender, RecommendationCriteria, UseCase
+from server.recommendations import ArchitectureRecommender, RecommendationCriteria
+from server.record_factory import create_architecture_record
 
-
-class ArchitectureResponse(BaseModel):
-    id: str
-    name: str
-    inserted_at: datetime
-    architecture: dict[str, Any]
-    profile_metadata: dict[str, Any]
-    scale: str
-    traffic_pattern: str
-    latency_sensitivity_score: float
-    processing_style: str
-    data_intensity_score: float
-    availability_requirement: str
-    ops_preference: str
-    budget_sensitivity_score: float
-
-    @classmethod
-    def from_record(cls, record: ArchitectureRecord) -> "ArchitectureResponse":
-        return cls(
-            id=record.id,
-            name=record.name,
-            inserted_at=record.inserted_at,
-            architecture=json.loads(record.architecture_json),
-            profile_metadata=json.loads(record.profile_metadata),
-            scale=record.scale,
-            traffic_pattern=record.traffic_pattern,
-            latency_sensitivity_score=record.latency_sensitivity_score,
-            processing_style=record.processing_style,
-            data_intensity_score=record.data_intensity_score,
-            availability_requirement=record.availability_requirement,
-            ops_preference=record.ops_preference,
-            budget_sensitivity_score=record.budget_sensitivity_score,
-        )
-
-
-class ArchitectureDetailResponse(ArchitectureResponse):
-    architecture: dict[str, Any] | None = None
-    profile_metadata: dict[str, Any] | None = None
-
-    @classmethod
-    def from_record(
-        cls,
-        record: ArchitectureRecord,
-        include_profile_metadata: bool,
-        include_architecture_data: bool,
-    ) -> "ArchitectureDetailResponse":
-        response = ArchitectureResponse.from_record(record).model_dump()
-        if not include_profile_metadata:
-            response["profile_metadata"] = None
-        if not include_architecture_data:
-            response["architecture"] = None
-        return cls.model_validate(response)
-
-
-class ParseArchitectureRequest(BaseModel):
-    endpoint: str
-    name: str
-    region: str = "us-east-1"
-    services: set[str] | None = None
-
-
-class ArchitectureRecommendationRequest(BaseModel):
-    use_case: UseCase
-    scale: Literal["small", "medium", "large"]
-    traffic_pattern: Literal["steady", "bursty", "spiky", "scheduled", "unpredictable"]
-    latency_sensitivity: Literal["low", "medium", "high"]
-    processing_style: Literal["request_response", "event_driven", "batch", "streaming"]
-    data_intensity: Literal["low", "medium", "high"]
-    availability_requirement: Literal["standard", "high", "critical"]
-    ops_preference: Literal["managed_services", "balanced", "self_managed_ok"]
-    budget_sensitivity: Literal["low", "medium", "high"]
-
-
-class ArchitectureRecommendationResponse(BaseModel):
-    architecture_id: str
-    name: str
-    endpoint: str | None
-    match_score: float
-    recommendation_type: str
-    reason: str
+logger = logging.getLogger(__name__)
+architecture_service = ArchitectureService()
+recommender = ArchitectureRecommender()
 
 
 def ensure_database() -> None:
     """Seed a missing local database during application initialization."""
-    if not DATABASE_PATH.exists():
-        try:
-            seed_database()
-        finally:
-            teardown_mocks()
+    if DATABASE_PATH.exists():
+        return
+
+    try:
+        seed_database()
+    finally:
+        teardown_mocks()
 
 
-architecture_service = ArchitectureService()
-app = FastAPI(title="Cloud Architecture Manager API")
-logger = logging.getLogger(__name__)
-ensure_database()
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Initialize external resources before the API accepts requests."""
+    ensure_database()
+    yield
+
+
+app = FastAPI(
+    title="Cloud Architecture Manager API",
+    lifespan=lifespan,
+)
+
 
 @app.get("/architectures", response_model=list[ArchitectureResponse])
 def get_architectures() -> list[ArchitectureResponse]:
@@ -139,7 +67,10 @@ def recommend_architectures(
 ) -> list[ArchitectureRecommendationResponse]:
     """Return up to three saved architectures ranked for the requested profile."""
     criteria = RecommendationCriteria(**request.model_dump())
-    recommendations = ArchitectureRecommender().recommend(architecture_service.list(), criteria)
+    recommendations = recommender.recommend(
+        architecture_service.list(),
+        criteria,
+    )
     return [
         ArchitectureRecommendationResponse(
             architecture_id=recommendation.record.id,
@@ -166,7 +97,10 @@ def get_architecture(
     """Return one saved architecture, with optional JSON and profile metadata."""
     record = architecture_service.get(architecture_id)
     if record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Architecture not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Architecture not found.",
+        )
     return ArchitectureDetailResponse.from_record(
         record,
         include_profile_metadata,
@@ -179,26 +113,30 @@ def get_architecture(
     response_model=ArchitectureResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def parse_architecture(request: ParseArchitectureRequest) -> ArchitectureResponse:
+def parse_architecture(
+    request: ParseArchitectureRequest,
+) -> ArchitectureResponse:
     """Parse an AWS-compatible endpoint and save the resulting architecture."""
     try:
-        architecture = parse(request.endpoint, request.name, request.region, request.services)
+        architecture = parse(
+            request.endpoint,
+            request.name,
+            request.region,
+            request.services,
+        )
     except RequestException as error:
-        logger.warning("Could not reach architecture endpoint %s: %s", request.endpoint, error)
+        logger.warning(
+            "Could not reach architecture endpoint %s: %s",
+            request.endpoint,
+            error,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Could not reach the architecture endpoint.",
         ) from error
-    document = architecture.model_dump(mode="json")
-    profile = calculate_profile(document)
+
     record = architecture_service.create(
-        ArchitectureRecord(
-            id=str(uuid.uuid4()),
-            name=document["name"],
-            architecture_json=json.dumps(document),
-            profile_metadata=json.dumps(profile.metadata),
-            **profile.values,
-        )
+        create_architecture_record(architecture.model_dump(mode="json"))
     )
     return ArchitectureResponse.from_record(record)
 
@@ -207,7 +145,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        app,
+        "server.main:app",
         host=os.getenv("SERVER_HOST", "127.0.0.1"),
         port=int(os.getenv("SERVER_PORT", "8000")),
     )

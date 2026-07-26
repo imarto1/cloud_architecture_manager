@@ -2,18 +2,46 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Mapping
+from typing import Any
 
+from server.profile_types import (
+    AvailabilityRequirement,
+    OpsPreference,
+    ProcessingStyle,
+    ProfileValues,
+    Scale,
+    TrafficPattern,
+)
 
 SCORING_VERSION = "1"
+
+
+def default_data_weights() -> dict[str, float]:
+    return {
+        "aws_s3_bucket": 0.15,
+        "aws_dynamodb_table": 0.30,
+        "aws_kinesis_stream": 0.50,
+        "aws_sqs_queue": 0.10,
+    }
+
+
+def default_scale_weights() -> dict[str, float]:
+    return {
+        "aws_s3_bucket": 1,
+        "aws_dynamodb_table": 1,
+        "aws_sqs_queue": 1,
+        "aws_kinesis_stream": 2,
+        "aws_ec2_instance": 2,
+    }
 
 
 @dataclass(frozen=True)
 class ProfileResult:
     """Inferred profile values plus the signals that led to each conclusion."""
 
-    values: dict[str, str | float]
+    values: ProfileValues
     metadata: dict[str, Any]
 
 
@@ -21,23 +49,8 @@ class ProfileResult:
 class ScoringConfig:
     """Tunable weights, thresholds, and defaults for every profile dimension."""
 
-    data_weights: Mapping[str, float] = field(
-        default_factory=lambda: {
-            "aws_s3_bucket": 0.15,
-            "aws_dynamodb_table": 0.30,
-            "aws_kinesis_stream": 0.50,
-            "aws_sqs_queue": 0.10,
-        }
-    )
-    scale_weights: Mapping[str, float] = field(
-        default_factory=lambda: {
-            "aws_s3_bucket": 1,
-            "aws_dynamodb_table": 1,
-            "aws_sqs_queue": 1,
-            "aws_kinesis_stream": 2,
-            "aws_ec2_instance": 2,
-        }
-    )
+    data_weights: Mapping[str, float] = field(default_factory=default_data_weights)
+    scale_weights: Mapping[str, float] = field(default_factory=default_scale_weights)
     managed_resource_types: frozenset[str] = frozenset(
         {"aws_s3_bucket", "aws_dynamodb_table", "aws_sqs_queue", "aws_kinesis_stream"}
     )
@@ -56,7 +69,7 @@ class ScoringConfig:
     latency_hints: tuple[str, ...] = ("api", "web", "real-time", "realtime", "interactive")
     latency_hint_confidence: float = 0.2
     latency_default_confidence: float = 0.05
-    availability_requirement: str = "standard"
+    availability_requirement: AvailabilityRequirement = "standard"
     availability_confidence: float = 0.05
     managed_ops_confidence: float = 0.65
     balanced_ops_confidence: float = 0.55
@@ -89,13 +102,18 @@ class ResourceWeightedScoringPolicy:
         resources = architecture.get("resources", [])
         resources_by_type = self._group_by_type(resources)
         resource_counts = {
-            resource_type: len(items)
-            for resource_type, items in resources_by_type.items()
+            resource_type: len(items) for resource_type, items in resources_by_type.items()
         }
         resource_names = self._resource_names(resources)
 
-        scale_weight = self._weighted_total(resource_counts, self.config.scale_weights)
-        data_score = min(1.0, self._weighted_total(resource_counts, self.config.data_weights))
+        scale_weight = self._weighted_resource_count(
+            resource_counts,
+            self.config.scale_weights,
+        )
+        data_score = min(
+            1.0,
+            self._weighted_resource_count(resource_counts, self.config.data_weights),
+        )
         managed_count = sum(
             resource_counts.get(resource_type, 0)
             for resource_type in self.config.managed_resource_types
@@ -122,12 +140,13 @@ class ResourceWeightedScoringPolicy:
         latency_hint_count = self._latency_hint_count(resource_names)
         on_demand_tables = self._on_demand_table_count(resources_by_type)
 
-        values = {
+        values: ProfileValues = {
             "scale": scale,
             "traffic_pattern": traffic_pattern,
             "latency_sensitivity_score": min(
                 1.0,
-                self.config.latency_base_score + self.config.latency_hint_weight * latency_hint_count,
+                self.config.latency_base_score
+                + self.config.latency_hint_weight * latency_hint_count,
             ),
             "processing_style": processing_style,
             "data_intensity_score": data_score,
@@ -167,10 +186,16 @@ class ResourceWeightedScoringPolicy:
         return " ".join(resource.get("name", "") or "" for resource in resources).lower()
 
     @staticmethod
-    def _weighted_total(counts: Mapping[str, int], weights: Mapping[str, float]) -> float:
-        return sum(counts.get(resource_type, 0) * weight for resource_type, weight in weights.items())
+    def _weighted_resource_count(
+        counts: Mapping[str, int],
+        weights: Mapping[str, float],
+    ) -> float:
+        """Apply the configured domain weights to the discovered resource counts."""
+        return sum(
+            counts.get(resource_type, 0) * weight for resource_type, weight in weights.items()
+        )
 
-    def _scale_for(self, scale_weight: float) -> str:
+    def _scale_for(self, scale_weight: float) -> Scale:
         if scale_weight > self.config.large_scale_threshold:
             return "large"
         if scale_weight > self.config.medium_scale_threshold:
@@ -182,30 +207,66 @@ class ResourceWeightedScoringPolicy:
         kinesis_count: int,
         sqs_count: int,
         resource_names: str,
-    ) -> tuple[str, float, list[str]]:
+    ) -> tuple[TrafficPattern, float, list[str]]:
         if kinesis_count:
-            return "steady", self.config.traffic_kinesis_confidence, [f"{kinesis_count} Kinesis stream(s) indicate continuous event flow."]
+            return (
+                "steady",
+                self.config.traffic_kinesis_confidence,
+                [f"{kinesis_count} Kinesis stream(s) indicate continuous event flow."],
+            )
         if sqs_count:
-            return "bursty", self.config.traffic_queue_confidence, [f"{sqs_count} SQS queue(s) can absorb bursts of work."]
+            return (
+                "bursty",
+                self.config.traffic_queue_confidence,
+                [f"{sqs_count} SQS queue(s) can absorb bursts of work."],
+            )
         if "batch" in resource_names or "scheduled" in resource_names:
-            return "scheduled", self.config.traffic_name_hint_confidence, ["A stored resource name contains a batch or scheduling hint."]
-        return "unpredictable", self.config.traffic_default_confidence, ["No traffic-shape resource is currently collected."]
+            return (
+                "scheduled",
+                self.config.traffic_name_hint_confidence,
+                ["A stored resource name contains a batch or scheduling hint."],
+            )
+        return (
+            "unpredictable",
+            self.config.traffic_default_confidence,
+            ["No traffic-shape resource is currently collected."],
+        )
 
     def _processing_style(
         self,
         kinesis_count: int,
         sqs_count: int,
         resource_names: str,
-    ) -> tuple[str, float, list[str]]:
+    ) -> tuple[ProcessingStyle, float, list[str]]:
         if kinesis_count:
-            return "streaming", self.config.processing_kinesis_confidence, [f"{kinesis_count} Kinesis stream(s) were discovered."]
+            return (
+                "streaming",
+                self.config.processing_kinesis_confidence,
+                [f"{kinesis_count} Kinesis stream(s) were discovered."],
+            )
         if sqs_count:
-            return "event_driven", self.config.processing_queue_confidence, [f"{sqs_count} SQS queue(s) were discovered."]
+            return (
+                "event_driven",
+                self.config.processing_queue_confidence,
+                [f"{sqs_count} SQS queue(s) were discovered."],
+            )
         if "batch" in resource_names:
-            return "batch", self.config.processing_name_hint_confidence, ["A stored resource name contains a batch hint."]
-        return "request_response", self.config.processing_default_confidence, ["No API, Lambda, batch, or event resource is currently collected."]
+            return (
+                "batch",
+                self.config.processing_name_hint_confidence,
+                ["A stored resource name contains a batch hint."],
+            )
+        return (
+            "request_response",
+            self.config.processing_default_confidence,
+            ["No API, Lambda, batch, or event resource is currently collected."],
+        )
 
-    def _ops_preference(self, managed_count: int, ec2_count: int) -> tuple[str, float, list[str]]:
+    def _ops_preference(
+        self,
+        managed_count: int,
+        ec2_count: int,
+    ) -> tuple[OpsPreference, float, list[str]]:
         if ec2_count == 0 and managed_count:
             return (
                 "managed_services",
@@ -213,19 +274,32 @@ class ResourceWeightedScoringPolicy:
                 ["All discovered workload resources are managed AWS services."],
             )
         if ec2_count and managed_count:
-            return "balanced", self.config.balanced_ops_confidence, ["Both EC2 instances and managed AWS services were discovered."]
+            return (
+                "balanced",
+                self.config.balanced_ops_confidence,
+                ["Both EC2 instances and managed AWS services were discovered."],
+            )
         if ec2_count:
-            return "self_managed_ok", self.config.self_managed_ops_confidence, ["Only EC2 workload compute was discovered."]
-        return "balanced", self.config.default_ops_confidence, ["No workload resource was discovered."]
+            return (
+                "self_managed_ok",
+                self.config.self_managed_ops_confidence,
+                ["Only EC2 workload compute was discovered."],
+            )
+        return (
+            "balanced",
+            self.config.default_ops_confidence,
+            ["No workload resource was discovered."],
+        )
 
     def _latency_hint_count(self, resource_names: str) -> int:
-        return sum(hint in resource_names for hint in self.config.latency_hints)
+        return sum(1 for hint in self.config.latency_hints if hint in resource_names)
 
     @staticmethod
     def _on_demand_table_count(resources_by_type: Mapping[str, list[dict[str, Any]]]) -> int:
         return sum(
-            table.get("metadata", {}).get("billing_mode") == "PAY_PER_REQUEST"
+            1
             for table in resources_by_type.get("aws_dynamodb_table", [])
+            if table.get("metadata", {}).get("billing_mode") == "PAY_PER_REQUEST"
         )
 
     def _metadata(
@@ -269,12 +343,17 @@ class ResourceWeightedScoringPolicy:
                     "evidence": processing_evidence,
                 },
                 "data_intensity_score": {
-                    "confidence": min(0.75, 0.2 + 0.1 * (kinesis_count + resource_counts.get("aws_dynamodb_table", 0))),
+                    "confidence": min(
+                        0.75,
+                        0.2 + 0.1 * (kinesis_count + resource_counts.get("aws_dynamodb_table", 0)),
+                    ),
                     "evidence": ["Weighted S3, DynamoDB, SQS, and Kinesis resource count."],
                 },
                 "availability_requirement": {
                     "confidence": self.config.availability_confidence,
-                    "evidence": ["No redundancy, replica, or multi-AZ configuration is currently collected."],
+                    "evidence": [
+                        "No redundancy, replica, or multi-AZ configuration is currently collected."
+                    ],
                 },
                 "ops_preference": {"confidence": ops_confidence, "evidence": ops_evidence},
                 "budget_sensitivity_score": {

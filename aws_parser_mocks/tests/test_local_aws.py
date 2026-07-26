@@ -1,19 +1,23 @@
-import boto3
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+from importlib.resources import files
 
+import boto3
 import pytest
 import requests
 
 from aws_parser.extractors.localstack import LocalStackArchitectureExtractor
 
-
 AWS_ACCESS_KEY_ID = "testing"
 AWS_SECRET_ACCESS_KEY = "testing"
 AWS_DEFAULT_REGION = "us-east-1"
-ARCHITECTURES_FILE = Path(__file__).parents[1] / "aws_parser_mocks" / "assets" / "architectures.json"
+ARCHITECTURES_RESOURCE = files("aws_parser_mocks").joinpath("assets/architectures.json")
+
+
+def load_architectures():
+    document = json.loads(ARCHITECTURES_RESOURCE.read_text(encoding="utf-8"))
+    return document["architectures"]
 
 
 def aws_client(service, endpoint):
@@ -50,8 +54,7 @@ def wait_for_scenario(architecture, timeout=30):
             if tag["Key"] == "ArchitectureId"
         }
         queue_names = {
-            queue_url.rsplit("/", 1)[-1]
-            for queue_url in sqs.list_queues().get("QueueUrls", [])
+            queue_url.rsplit("/", 1)[-1] for queue_url in sqs.list_queues().get("QueueUrls", [])
         }
         if (
             expected_buckets <= s3_buckets
@@ -75,14 +78,15 @@ def test_all_mock_clouds_are_up(localstack_service):
         assert response.status_code == 200
         services = response.json()["services"]
         assert {
-            service for service in required_services
+            service
+            for service in required_services
             if services.get(service) in {"running", "available"}
         } == required_services
 
 
 def test_scanner_extracts_resources_without_inferring_purpose(localstack_service):
     """The parser observes each cloud from its endpoint, not fixture metadata or names."""
-    architectures = json.loads(ARCHITECTURES_FILE.read_text())["architectures"]
+    architectures = load_architectures()
 
     def scan(architecture):
         return architecture, LocalStackArchitectureExtractor(
@@ -111,11 +115,18 @@ def test_scanner_warns_for_unsupported_requested_service(localstack_service):
 
 def test_architecture_scenarios_are_isolated_clouds(localstack_service):
     """Each use case has its own endpoint and contains only its declared resources."""
-    architectures = json.loads(ARCHITECTURES_FILE.read_text())["architectures"]
+    architectures = load_architectures()
     expected_use_cases = {
-        "web_application", "public_api", "ecommerce", "real_time_analytics",
-        "batch_processing", "event_processing", "media_delivery", "internal_tool",
-        "iot_ingestion", "ml_inference",
+        "web_application",
+        "public_api",
+        "ecommerce",
+        "real_time_analytics",
+        "batch_processing",
+        "event_processing",
+        "media_delivery",
+        "internal_tool",
+        "iot_ingestion",
+        "ml_inference",
     }
 
     assert len(architectures) == 10
@@ -125,7 +136,11 @@ def test_architecture_scenarios_are_isolated_clouds(localstack_service):
     with ThreadPoolExecutor(max_workers=len(architectures)) as executor:
         discovered_resources = list(executor.map(wait_for_scenario, architectures))
 
-    for architecture, (buckets, tables, instances, queues) in zip(architectures, discovered_resources):
+    for architecture, (buckets, tables, instances, queues) in zip(
+        architectures,
+        discovered_resources,
+        strict=True,
+    ):
         resources = architecture["resources"]
         assert buckets == set(resources.get("s3_buckets", []))
         assert tables == set(resources.get("dynamodb_tables", []))
@@ -134,7 +149,7 @@ def test_architecture_scenarios_are_isolated_clouds(localstack_service):
 
 
 def test_web_application_cloud_is_accessible(localstack_service):
-    architectures = json.loads(ARCHITECTURES_FILE.read_text())["architectures"]
+    architectures = load_architectures()
     web_application = next(item for item in architectures if item["id"] == "web-application")
     buckets, tables, instances, _ = wait_for_scenario(web_application)
 

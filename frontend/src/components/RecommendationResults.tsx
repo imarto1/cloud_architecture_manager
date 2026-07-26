@@ -6,10 +6,10 @@ import type { Recommendation } from "../recommendationData";
 import { humanize } from "../recommendationData";
 import { SecondaryButton } from "../ui";
 
-type RecommendationResultsProps = {
+interface RecommendationResultsProps {
   recommendations: Recommendation[];
   onReturn: () => void;
-};
+}
 
 const resultsEnter = keyframes`
   from {

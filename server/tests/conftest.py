@@ -4,24 +4,21 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from aws_parser_mocks.testing import find_free_port_range, running_mock_clouds
 from fastapi.testclient import TestClient
 
-MOCK_PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "aws_parser_mocks"
-if str(MOCK_PACKAGE_ROOT) not in sys.path:
-    sys.path.insert(0, str(MOCK_PACKAGE_ROOT))
-
 import server.main as api
-from aws_parser_mocks.testing import find_free_port_range, running_mock_clouds
 from server.architecture_service import ArchitectureService
 
 
 @pytest.fixture
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, ArchitectureService]]:
+def client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[tuple[TestClient, ArchitectureService]]:
     """Provide an API client backed by an isolated, already-created SQLite database."""
     database_path = tmp_path / "architectures.sqlite"
     service = ArchitectureService(database_path)

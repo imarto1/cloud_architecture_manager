@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import os
 import socket
-import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
-from importlib.resources import as_file, files
 
+from aws_parser_mocks.compose import MockComposeProject
 
 MOCK_SERVICE_NAMES = (
     "WEB_APPLICATION",
@@ -60,35 +59,14 @@ def mock_endpoint(architecture_id: str) -> str:
 @contextmanager
 def running_mock_clouds(project_name: str, port_base: int = 4566) -> Iterator[dict[str, str]]:
     """Start the bundled mock clouds and remove their containers and volumes afterward."""
-    compose_resource = files("aws_parser_mocks").joinpath("assets/docker-compose.yml")
-    with as_file(compose_resource) as compose_file:
-        command = [
-            "docker",
-            "compose",
-            "--parallel",
-            "10",
-            "-f",
-            str(compose_file),
-            "-p",
-            project_name,
-        ]
-        environment = os.environ.copy()
-        ports = mock_port_environment(port_base)
-        environment.update(ports)
-        endpoints = {
-            service_name.removesuffix("_PORT").lower(): f"http://localhost:{port}"
-            for service_name, port in ports.items()
-        }
-        try:
-            subprocess.run(
-                [*command, "up", "--detach", "--wait"],
-                check=True,
-                env=environment,
-            )
-            yield endpoints
-        finally:
-            subprocess.run(
-                [*command, "down", "--volumes", "--remove-orphans"],
-                check=False,
-                env=environment,
-            )
+    ports = mock_port_environment(port_base)
+    endpoints = {
+        service_name.removesuffix("_PORT").lower(): f"http://localhost:{port}"
+        for service_name, port in ports.items()
+    }
+    compose_project = MockComposeProject(project_name, ports)
+    try:
+        compose_project.up()
+        yield endpoints
+    finally:
+        compose_project.down(check=False)

@@ -2,8 +2,8 @@ import json
 from subprocess import CompletedProcess
 
 from aws_parser import parse, parse_mocks, teardown_mocks
-from aws_parser.DTOs import Architecture
 from aws_parser.cli import discover_container_endpoints, main, parse_containers
+from aws_parser.DTOs import Architecture
 
 
 class FakeExtractor:
@@ -30,12 +30,24 @@ def test_parse_mocks_is_exported_as_optional_mock_api():
 
 
 def test_discover_container_endpoints_uses_gateway_port(monkeypatch):
-    responses = iter([
-        CompletedProcess([], 0, "mock-api-1\n"),
-        CompletedProcess([], 0, json.dumps([{
-            "NetworkSettings": {"Ports": {"4566/tcp": [{"HostIp": "127.0.0.1", "HostPort": "4566"}]}}
-        }])),
-    ])
+    responses = iter(
+        [
+            CompletedProcess([], 0, "mock-api-1\n"),
+            CompletedProcess(
+                [],
+                0,
+                json.dumps(
+                    [
+                        {
+                            "NetworkSettings": {
+                                "Ports": {"4566/tcp": [{"HostIp": "127.0.0.1", "HostPort": "4566"}]}
+                            }
+                        }
+                    ]
+                ),
+            ),
+        ]
+    )
     monkeypatch.setattr("aws_parser.cli.subprocess.run", lambda *args, **kwargs: next(responses))
 
     assert discover_container_endpoints("mock") == {"mock-api-1": "http://127.0.0.1:4566"}

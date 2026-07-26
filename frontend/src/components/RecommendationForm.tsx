@@ -12,7 +12,7 @@ import type {
 } from "../recommendationData";
 import { ActionButton, ErrorMessage } from "../ui";
 
-type RecommendationFormProps = {
+interface RecommendationFormProps {
   preferences: Preferences;
   hidden: boolean;
   isLoading: boolean;
@@ -22,7 +22,7 @@ type RecommendationFormProps = {
     value: Preferences[Field],
   ) => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
-};
+}
 
 const panelEnter = keyframes`
   from {

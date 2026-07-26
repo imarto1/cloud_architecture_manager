@@ -1,0 +1,4 @@
+-e ./aws_parser[test]
+-e ./aws_parser_mocks[test]
+-r server/requirements-dev.txt
+ruff>=0.12,<1.0

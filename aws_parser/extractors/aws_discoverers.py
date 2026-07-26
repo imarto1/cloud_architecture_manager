@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from aws_parser.DTOs.architecture import Resource, Tag
+from aws_parser.models import Resource, Tag
 
 
 class ResourceDiscoverer(Protocol):
@@ -90,7 +90,9 @@ class SqsDiscoverer:
     def discover(self, client: Any, region: str) -> list[Resource]:
         resources = []
         for queue_url in client.list_queues().get("QueueUrls", []):
-            attributes = client.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["All"])["Attributes"]
+            attributes = client.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["All"])[
+                "Attributes"
+            ]
             resources.append(
                 Resource(
                     id=attributes["QueueArn"],
@@ -132,7 +134,9 @@ class KinesisDiscoverer:
         resources = []
         for page in client.get_paginator("list_streams").paginate():
             for stream_name in page["StreamNames"]:
-                stream = client.describe_stream_summary(StreamName=stream_name)["StreamDescriptionSummary"]
+                stream = client.describe_stream_summary(StreamName=stream_name)[
+                    "StreamDescriptionSummary"
+                ]
                 resources.append(
                     Resource(
                         id=stream["StreamARN"],
